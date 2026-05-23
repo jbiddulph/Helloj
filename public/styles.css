@@ -3,48 +3,68 @@
   font-family: Arial, sans-serif;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  background: #f5f7fb;
+  background: #eef2ff;
   color: #1f2937;
 }
 
 .container {
-  max-width: 760px;
+  max-width: 1100px;
   margin: 40px auto;
   padding: 0 16px;
 }
 
-h1 {
-  margin-bottom: 8px;
+.header h1 {
+  margin: 0 0 8px;
 }
 
 .subtitle {
-  margin-top: 0;
-  margin-bottom: 24px;
+  margin: 0 0 24px;
   color: #4b5563;
 }
 
 .card {
   background: #ffffff;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
   margin-bottom: 16px;
 }
 
-.row {
+.controls {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-input {
-  flex: 1;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
+.controls label {
   font-size: 14px;
+  color: #374151;
+}
+
+#color-picker {
+  width: 44px;
+  height: 36px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 2px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+#brush-size {
+  width: 160px;
+}
+
+#brush-size-value {
+  min-width: 40px;
+  color: #4b5563;
 }
 
 button {
@@ -61,9 +81,28 @@ button:hover {
   background: #1d4ed8;
 }
 
-ul {
-  margin: 12px 0 0;
-  padding-left: 18px;
+button.active {
+  background: #1e40af;
+}
+
+.canvas-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+#drawing-canvas {
+  width: 100%;
+  height: min(70vh, 640px);
+  display: block;
+  background: #ffffff;
+  border: 2px solid #c7d2fe;
+  border-radius: 12px;
+  touch-action: none;
+}
+
+.status h2 {
+  margin-top: 0;
+  margin-bottom: 6px;
 }
 
 .status p {
