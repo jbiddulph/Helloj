@@ -141,12 +141,22 @@ body {
 }
 
 #garment-type,
+#output-aspect-ratio,
+#background-preservation,
 #style-prompt {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font: inherit;
+}
+
+#change-strength {
+  width: 100%;
+}
+
+#change-strength-value {
+  color: #4b5563;
 }
 
 button {
@@ -170,6 +180,51 @@ button.active {
 #generation-status {
   margin: 0;
   color: #4b5563;
+}
+
+.result button {
+  margin-top: 12px;
+}
+
+.history h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+#history-placeholder {
+  margin: 0 0 12px;
+  color: #6b7280;
+}
+
+.history-gallery {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.history-item {
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.history-item img {
+  width: 100%;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+  aspect-ratio: 1 / 1;
+}
+
+.history-item p {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #374151;
+}
+
+.history-item button {
+  width: 100%;
 }
 
 .status h2 {

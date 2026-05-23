@@ -18,15 +18,25 @@ const referenceCameraStop = document.getElementById("reference-camera-stop");
 const personVideo = document.getElementById("person-video");
 const referenceVideo = document.getElementById("reference-video");
 const garmentType = document.getElementById("garment-type");
+const outputAspectRatio = document.getElementById("output-aspect-ratio");
+const backgroundPreservation = document.getElementById("background-preservation");
+const changeStrength = document.getElementById("change-strength");
+const changeStrengthValue = document.getElementById("change-strength-value");
 const stylePrompt = document.getElementById("style-prompt");
 const generateButton = document.getElementById("generate-button");
+const downloadResultButton = document.getElementById("download-result");
+const historyGallery = document.getElementById("history-gallery");
+const historyPlaceholder = document.getElementById("history-placeholder");
 const generationStatus = document.getElementById("generation-status");
 const serverStatus = document.getElementById("server-status");
+
+const MAX_HISTORY_ITEMS = 12;
 
 const appState = {
   personImageDataUrl: null,
   referenceImageDataUrl: null,
   resultImageDataUrl: null,
+  history: [],
   streams: {
     person: null,
     reference: null,
@@ -44,6 +54,23 @@ function setPreview({ frame, imageElement, placeholderElement }, dataUrl) {
   imageElement.src = dataUrl;
   frame.classList.add("has-image");
   placeholderElement.style.display = "none";
+}
+
+function formatFilenameTimestamp(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const second = String(date.getSeconds()).padStart(2, "0");
+  return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  link.click();
 }
 
 async function fileToDataUrl(file) {
@@ -181,6 +208,55 @@ function updateResultPreview(dataUrl) {
     { frame: resultFrame, imageElement: resultPreview, placeholderElement: resultPlaceholder },
     appState.resultImageDataUrl
   );
+  downloadResultButton.disabled = !appState.resultImageDataUrl;
+}
+
+function updateChangeStrengthLabel() {
+  changeStrengthValue.textContent = `${changeStrength.value}%`;
+}
+
+function addHistoryEntry(dataUrl, metadata) {
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    dataUrl,
+    createdAt: new Date(),
+    metadata,
+  };
+  appState.history.unshift(entry);
+  if (appState.history.length > MAX_HISTORY_ITEMS) {
+    appState.history.length = MAX_HISTORY_ITEMS;
+  }
+  renderHistoryGallery();
+}
+
+function renderHistoryGallery() {
+  historyGallery.innerHTML = "";
+  historyPlaceholder.style.display = appState.history.length ? "none" : "block";
+
+  appState.history.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = "history-item";
+
+    const image = document.createElement("img");
+    image.src = entry.dataUrl;
+    image.alt = "Previously generated virtual try-on image";
+    item.appendChild(image);
+
+    const details = document.createElement("p");
+    const timeLabel = entry.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    details.textContent = `${entry.metadata.garment} • ${entry.metadata.aspectRatioLabel} • ${timeLabel}`;
+    item.appendChild(details);
+
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.textContent = "Download";
+    downloadButton.addEventListener("click", () => {
+      downloadDataUrl(entry.dataUrl, `try-on-${formatFilenameTimestamp(entry.createdAt)}.png`);
+    });
+    item.appendChild(downloadButton);
+
+    historyGallery.appendChild(item);
+  });
 }
 
 async function generateTryOn() {
@@ -202,6 +278,9 @@ async function generateTryOn() {
         personImageDataUrl: appState.personImageDataUrl,
         referenceImageDataUrl: appState.referenceImageDataUrl,
         garmentType: garmentType.value,
+        outputAspectRatio: outputAspectRatio.value,
+        backgroundPreservation: backgroundPreservation.value,
+        changeStrength: Number(changeStrength.value),
         prompt: stylePrompt.value.trim(),
       }),
     });
@@ -217,6 +296,10 @@ async function generateTryOn() {
     }
 
     updateResultPreview(responseBody.resultImageDataUrl);
+    addHistoryEntry(responseBody.resultImageDataUrl, {
+      garment: garmentType.value,
+      aspectRatioLabel: outputAspectRatio.options[outputAspectRatio.selectedIndex]?.text || outputAspectRatio.value,
+    });
     generationStatus.textContent = "Done! Your try-on image is ready.";
   } catch (error) {
     generationStatus.textContent = `Generation failed: ${error.message}`;
@@ -248,11 +331,21 @@ personCameraStop.addEventListener("click", () => stopCamera("person"));
 referenceCameraStart.addEventListener("click", () => startCamera("reference"));
 referenceCameraCapture.addEventListener("click", () => captureFromCamera("reference"));
 referenceCameraStop.addEventListener("click", () => stopCamera("reference"));
+changeStrength.addEventListener("input", updateChangeStrengthLabel);
 generateButton.addEventListener("click", generateTryOn);
+downloadResultButton.addEventListener("click", () => {
+  if (!appState.resultImageDataUrl) {
+    return;
+  }
+  downloadDataUrl(appState.resultImageDataUrl, `try-on-latest-${formatFilenameTimestamp()}.png`);
+});
 window.addEventListener("beforeunload", () => {
   stopCamera("person");
   stopCamera("reference");
 });
 
 updateInputsPreview();
+updateResultPreview(null);
+updateChangeStrengthLabel();
+renderHistoryGallery();
 loadStatus();

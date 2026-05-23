@@ -6,6 +6,11 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+const ASPECT_RATIO_SIZE_MAP = {
+  square: "1024x1024",
+  portrait: "1024x1536",
+  landscape: "1536x1024",
+};
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -112,7 +117,28 @@ function parseImageDataUrl(dataUrl) {
   return { buffer, mimeType, extension };
 }
 
-function buildTryOnPrompt({ garmentType, prompt }) {
+function normalizeAspectRatio(value) {
+  if (typeof value !== "string") {
+    return "square";
+  }
+  return Object.prototype.hasOwnProperty.call(ASPECT_RATIO_SIZE_MAP, value) ? value : "square";
+}
+
+function normalizeBackgroundPreservation(value) {
+  if (value === "strict" || value === "balanced" || value === "creative") {
+    return value;
+  }
+  return "balanced";
+}
+
+function normalizeChangeStrength(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return 78;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function buildTryOnPrompt({ garmentType, prompt, backgroundPreservation, changeStrength }) {
   const garmentLabel = typeof garmentType === "string" && garmentType.trim() ? garmentType.trim() : "clothing item";
   const userPrompt = typeof prompt === "string" ? prompt.trim() : "";
 
@@ -123,7 +149,24 @@ function buildTryOnPrompt({ garmentType, prompt }) {
     `Dress the person in image 1 with the ${garmentLabel} style seen in image 2.`,
     "Preserve the same person face, body proportions, skin tone, and a natural pose.",
     "Keep the output photorealistic and coherent.",
+    "The reference image provides style and garment details, but identity must remain the person from image 1.",
   ];
+
+  if (backgroundPreservation === "strict") {
+    basePrompt.push("Keep the original background from image 1 unchanged.");
+  } else if (backgroundPreservation === "balanced") {
+    basePrompt.push("Prefer preserving the original background from image 1 with only minimal adjustments if needed.");
+  } else {
+    basePrompt.push("Background can adapt moderately for realism while keeping focus on the person.");
+  }
+
+  if (changeStrength >= 85) {
+    basePrompt.push("Only modify the requested garment area and keep everything else unchanged.");
+  } else if (changeStrength >= 65) {
+    basePrompt.push("Prioritize garment replacement while preserving most non-garment details.");
+  } else {
+    basePrompt.push("Allow moderate adaptation beyond the garment for a coherent visual result.");
+  }
 
   if (userPrompt) {
     basePrompt.push(`Additional user request: ${userPrompt}`);
@@ -132,19 +175,35 @@ function buildTryOnPrompt({ garmentType, prompt }) {
   return basePrompt.join(" ");
 }
 
-async function generateTryOnImage({ personImageDataUrl, referenceImageDataUrl, garmentType, prompt }) {
+async function generateTryOnImage({
+  personImageDataUrl,
+  referenceImageDataUrl,
+  garmentType,
+  outputAspectRatio,
+  backgroundPreservation,
+  changeStrength,
+  prompt,
+}) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured on the server.");
   }
 
   const personImage = parseImageDataUrl(personImageDataUrl);
   const referenceImage = parseImageDataUrl(referenceImageDataUrl);
-  const generationPrompt = buildTryOnPrompt({ garmentType, prompt });
+  const normalizedAspectRatio = normalizeAspectRatio(outputAspectRatio);
+  const normalizedBackgroundPreservation = normalizeBackgroundPreservation(backgroundPreservation);
+  const normalizedChangeStrength = normalizeChangeStrength(changeStrength);
+  const generationPrompt = buildTryOnPrompt({
+    garmentType,
+    prompt,
+    backgroundPreservation: normalizedBackgroundPreservation,
+    changeStrength: normalizedChangeStrength,
+  });
 
   const formData = new FormData();
   formData.append("model", OPENAI_IMAGE_MODEL);
   formData.append("prompt", generationPrompt);
-  formData.append("size", "1024x1024");
+  formData.append("size", ASPECT_RATIO_SIZE_MAP[normalizedAspectRatio]);
   formData.append("response_format", "b64_json");
   formData.append(
     "image[]",

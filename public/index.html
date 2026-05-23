@@ -71,6 +71,24 @@
           <option value="other">Other</option>
         </select>
 
+        <label for="output-aspect-ratio">Output Aspect Ratio</label>
+        <select id="output-aspect-ratio">
+          <option value="square">Square (1:1)</option>
+          <option value="portrait">Portrait (2:3)</option>
+          <option value="landscape">Landscape (3:2)</option>
+        </select>
+
+        <label for="background-preservation">Background Preservation</label>
+        <select id="background-preservation">
+          <option value="strict">Strict (keep original background)</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="creative">Creative (allow more scene adaptation)</option>
+        </select>
+
+        <label for="change-strength">Garment-Only Change Strength</label>
+        <input id="change-strength" type="range" min="0" max="100" value="78" />
+        <output id="change-strength-value" for="change-strength">78%</output>
+
         <label for="style-prompt">Style Request</label>
         <textarea
           id="style-prompt"
@@ -88,6 +106,13 @@
           <img id="result-preview" alt="AI generated try-on image" />
           <p id="result-placeholder">Your generated result will appear here.</p>
         </div>
+        <button id="download-result" type="button" disabled>Download Latest Result</button>
+      </section>
+
+      <section class="card history" aria-label="Generation history">
+        <h2>Generation History</h2>
+        <p id="history-placeholder">Generated images will appear here.</p>
+        <div id="history-gallery" class="history-gallery"></div>
       </section>
 
       <section class="card status">

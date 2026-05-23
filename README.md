@@ -8,8 +8,14 @@ virtual try-on generation.
 - Split-screen UI for:
   - user photo (upload or camera capture)
   - outfit reference image (upload or camera capture)
+- Generation controls for:
+  - garment type
+  - output aspect ratio (square, portrait, landscape)
+  - background preservation behavior
+  - garment-only change strength
 - OpenAI image edit integration to generate try-on output
 - Generated image preview in-app
+- Generation history gallery with per-image download
 - Lightweight Node.js server using built-in modules
 - Health endpoint at `GET /api/health`
 - Try-on endpoint at `POST /api/virtual-try-on`
