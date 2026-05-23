@@ -1,0 +1,17 @@
+{
+  "name": "basic-web-application",
+  "version": "1.0.0",
+  "description": "A basic web application starter",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "web",
+    "starter",
+    "node"
+  ],
+  "author": "",
+  "license": "MIT"
+}
