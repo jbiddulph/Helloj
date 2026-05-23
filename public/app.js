@@ -1,5 +1,7 @@
 const personUpload = document.getElementById("person-upload");
 const referenceUpload = document.getElementById("reference-upload");
+const personLibraryButton = document.getElementById("person-library-button");
+const referenceLibraryButton = document.getElementById("reference-library-button");
 const personPreview = document.getElementById("person-preview");
 const referencePreview = document.getElementById("reference-preview");
 const resultPreview = document.getElementById("result-preview");
@@ -95,6 +97,11 @@ async function handleFileUpload(fileInput, target) {
   } catch (error) {
     generationStatus.textContent = `Upload failed: ${error.message}`;
   }
+}
+
+function openPhotoLibrary(fileInput) {
+  fileInput.value = "";
+  fileInput.click();
 }
 
 function getVideoElement(side) {
@@ -325,6 +332,8 @@ async function loadStatus() {
 
 personUpload.addEventListener("change", () => handleFileUpload(personUpload, "personImageDataUrl"));
 referenceUpload.addEventListener("change", () => handleFileUpload(referenceUpload, "referenceImageDataUrl"));
+personLibraryButton.addEventListener("click", () => openPhotoLibrary(personUpload));
+referenceLibraryButton.addEventListener("click", () => openPhotoLibrary(referenceUpload));
 personCameraStart.addEventListener("click", () => startCamera("person"));
 personCameraCapture.addEventListener("click", () => captureFromCamera("person"));
 personCameraStop.addEventListener("click", () => stopCamera("person"));
