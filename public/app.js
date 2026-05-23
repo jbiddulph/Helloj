@@ -31,6 +31,8 @@ const generationStatus = document.getElementById("generation-status");
 const serverStatus = document.getElementById("server-status");
 
 const MAX_HISTORY_ITEMS = 12;
+const LIBRARY_ACCEPT_VALUE =
+  ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
 
 const appState = {
   personImageDataUrl: null,
@@ -54,6 +56,13 @@ function setPreview({ frame, imageElement, placeholderElement }, dataUrl) {
   imageElement.src = dataUrl;
   frame.classList.add("has-image");
   placeholderElement.style.display = "none";
+}
+
+function enforceLibraryPickerSettings() {
+  [personUpload, referenceUpload].forEach((input) => {
+    input.removeAttribute("capture");
+    input.setAttribute("accept", LIBRARY_ACCEPT_VALUE);
+  });
 }
 
 function formatFilenameTimestamp(date = new Date()) {
@@ -348,4 +357,5 @@ updateInputsPreview();
 updateResultPreview(null);
 updateChangeStrengthLabel();
 renderHistoryGallery();
+enforceLibraryPickerSettings();
 loadStatus();
