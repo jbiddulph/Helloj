@@ -3,24 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Basic Web Application</title>
+    <title>Canvas Drawing Project</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="container">
-      <h1>Basic Web Application</h1>
-      <p class="subtitle">A minimal starter built with HTML, CSS, and JavaScript.</p>
+      <header class="header">
+        <h1>HTML5 Canvas Drawing Project</h1>
+        <p class="subtitle">Draw with mouse or touch, change brush size, erase, clear, and save your art.</p>
+      </header>
 
-      <section class="card">
-        <h2>Quick Notes</h2>
-        <form id="note-form">
-          <label for="note-input">Add a note</label>
-          <div class="row">
-            <input id="note-input" name="note" type="text" placeholder="Type something..." required />
-            <button type="submit">Add</button>
-          </div>
-        </form>
-        <ul id="note-list" aria-live="polite"></ul>
+      <section class="card controls" aria-label="Drawing controls">
+        <label for="color-picker">Color</label>
+        <input id="color-picker" type="color" value="#2563eb" />
+
+        <label for="brush-size">Brush Size</label>
+        <input id="brush-size" type="range" min="1" max="50" value="6" />
+        <output id="brush-size-value" for="brush-size">6px</output>
+
+        <button id="draw-mode" type="button" class="active">Draw</button>
+        <button id="erase-mode" type="button">Erase</button>
+        <button id="clear-canvas" type="button">Clear</button>
+        <button id="save-image" type="button">Save PNG</button>
+      </section>
+
+      <section class="card canvas-card">
+        <canvas id="drawing-canvas" width="960" height="540" aria-label="Drawing canvas"></canvas>
       </section>
 
       <section class="card status">
