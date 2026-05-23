@@ -3,32 +3,116 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Canvas Drawing Project</title>
+    <title>AI Virtual Try-On</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="container">
       <header class="header">
-        <h1>HTML5 Canvas Drawing Project</h1>
-        <p class="subtitle">Draw with mouse or touch, change brush size, erase, clear, and save your art.</p>
+        <h1>AI Virtual Try-On Studio</h1>
+        <p class="subtitle">
+          Upload or capture your photo on the left, add a clothing reference image on the right, then generate a
+          preview of how you would look wearing that item.
+        </p>
       </header>
 
-      <section class="card controls" aria-label="Drawing controls">
-        <label for="color-picker">Color</label>
-        <input id="color-picker" type="color" value="#2563eb" />
+      <section class="card split-screen" aria-label="Input images">
+        <article class="panel">
+          <h2>Your Photo</h2>
+          <div class="preview-frame">
+            <img id="person-preview" alt="Preview of the person image" />
+            <p id="person-placeholder">No photo selected yet.</p>
+          </div>
+          <div class="panel-actions">
+            <label class="file-button" for="person-upload">Upload Photo</label>
+            <input
+              id="person-upload"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/jpg,image/*"
+              capture="user"
+            />
+            <button id="person-camera-start" type="button">Use Camera</button>
+            <button id="person-camera-capture" type="button" disabled>Capture</button>
+            <button id="person-camera-stop" type="button" disabled>Stop Camera</button>
+          </div>
+          <video id="person-video" class="camera-feed" autoplay playsinline muted></video>
+        </article>
 
-        <label for="brush-size">Brush Size</label>
-        <input id="brush-size" type="range" min="1" max="50" value="6" />
-        <output id="brush-size-value" for="brush-size">6px</output>
-
-        <button id="draw-mode" type="button" class="active">Draw</button>
-        <button id="erase-mode" type="button">Erase</button>
-        <button id="clear-canvas" type="button">Clear</button>
-        <button id="save-image" type="button">Save PNG</button>
+        <article class="panel">
+          <h2>Reference Outfit</h2>
+          <div class="preview-frame">
+            <img id="reference-preview" alt="Preview of the clothing reference image" />
+            <p id="reference-placeholder">No reference image selected yet.</p>
+          </div>
+          <div class="panel-actions">
+            <label class="file-button" for="reference-upload">Upload Outfit</label>
+            <input
+              id="reference-upload"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/jpg,image/*"
+              capture="environment"
+            />
+            <button id="reference-camera-start" type="button">Use Camera</button>
+            <button id="reference-camera-capture" type="button" disabled>Capture</button>
+            <button id="reference-camera-stop" type="button" disabled>Stop Camera</button>
+          </div>
+          <video id="reference-video" class="camera-feed" autoplay playsinline muted></video>
+        </article>
       </section>
 
-      <section class="card canvas-card">
-        <canvas id="drawing-canvas" width="960" height="540" aria-label="Drawing canvas"></canvas>
+      <section class="card controls" aria-label="Generation controls">
+        <label for="garment-type">Item Type</label>
+        <select id="garment-type">
+          <option value="shirt">Shirt / Top</option>
+          <option value="trousers">Trousers / Pants</option>
+          <option value="hat">Hat</option>
+          <option value="shoes">Shoes</option>
+          <option value="jacket">Jacket</option>
+          <option value="other">Other</option>
+        </select>
+
+        <label for="output-aspect-ratio">Output Aspect Ratio</label>
+        <select id="output-aspect-ratio">
+          <option value="square">Square (1:1)</option>
+          <option value="portrait">Portrait (2:3)</option>
+          <option value="landscape">Landscape (3:2)</option>
+        </select>
+
+        <label for="background-preservation">Background Preservation</label>
+        <select id="background-preservation">
+          <option value="strict">Strict (keep original background)</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="creative">Creative (allow more scene adaptation)</option>
+        </select>
+
+        <label for="change-strength">Garment-Only Change Strength</label>
+        <input id="change-strength" type="range" min="0" max="100" value="78" />
+        <output id="change-strength-value" for="change-strength">78%</output>
+
+        <label for="style-prompt">Style Request</label>
+        <textarea
+          id="style-prompt"
+          rows="3"
+          placeholder="Example: Show me what I look like wearing this shirt, keeping my face and pose natural."
+        ></textarea>
+
+        <button id="generate-button" type="button">Generate Try-On</button>
+        <p id="generation-status" role="status" aria-live="polite">Ready.</p>
+      </section>
+
+      <section class="card result" aria-label="Generated image">
+        <h2>Generated Try-On Result</h2>
+        <div class="preview-frame result-frame">
+          <img id="result-preview" alt="AI generated try-on image" />
+          <p id="result-placeholder">Your generated result will appear here.</p>
+        </div>
+        <button id="download-result" type="button" disabled>Download Latest Result</button>
+      </section>
+
+      <section class="card history" aria-label="Generation history">
+        <h2>Generation History</h2>
+        <p id="history-placeholder">Generated images will appear here.</p>
+        <div id="history-gallery" class="history-gallery"></div>
       </section>
 
       <section class="card status">
