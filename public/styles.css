@@ -9,12 +9,12 @@
 
 body {
   margin: 0;
-  background: #eef2ff;
+  background: #f3f4f6;
   color: #1f2937;
 }
 
 .container {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 40px auto;
   padding: 0 16px;
 }
@@ -26,6 +26,7 @@ body {
 .subtitle {
   margin: 0 0 24px;
   color: #4b5563;
+  line-height: 1.5;
 }
 
 .card {
@@ -36,11 +37,102 @@ body {
   margin-bottom: 16px;
 }
 
-.controls {
+.split-screen {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.panel h2 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.preview-frame {
+  min-height: 300px;
+  border: 2px dashed #c7d2fe;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.preview-frame img {
+  max-width: 100%;
+  max-height: 480px;
+  border-radius: 8px;
+  display: none;
+}
+
+.preview-frame.has-image img {
+  display: block;
+}
+
+.preview-frame p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.preview-frame.has-image p {
+  display: none;
+}
+
+.panel-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.panel-actions input[type="file"] {
+  display: none;
+}
+
+.file-button,
+.panel-actions button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.file-button:hover,
+.panel-actions button:hover {
+  background: #1d4ed8;
+}
+
+.panel-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.camera-feed {
+  width: 100%;
+  margin-top: 12px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  display: none;
+  background: #111827;
+}
+
+.camera-feed.active {
+  display: block;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .controls label {
@@ -48,23 +140,13 @@ body {
   color: #374151;
 }
 
-#color-picker {
-  width: 44px;
-  height: 36px;
+#garment-type,
+#style-prompt {
+  width: 100%;
+  padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  padding: 2px;
-  background: #ffffff;
-  cursor: pointer;
-}
-
-#brush-size {
-  width: 160px;
-}
-
-#brush-size-value {
-  min-width: 40px;
-  color: #4b5563;
+  font: inherit;
 }
 
 button {
@@ -85,19 +167,9 @@ button.active {
   background: #1e40af;
 }
 
-.canvas-card {
-  padding: 0;
-  overflow: hidden;
-}
-
-#drawing-canvas {
-  width: 100%;
-  height: min(70vh, 640px);
-  display: block;
-  background: #ffffff;
-  border: 2px solid #c7d2fe;
-  border-radius: 12px;
-  touch-action: none;
+#generation-status {
+  margin: 0;
+  color: #4b5563;
 }
 
 .status h2 {
@@ -107,4 +179,10 @@ button.active {
 
 .status p {
   margin: 0;
+}
+
+@media (max-width: 900px) {
+  .split-screen {
+    grid-template-columns: 1fr;
+  }
 }

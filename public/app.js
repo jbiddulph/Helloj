@@ -1,132 +1,228 @@
-const canvas = document.getElementById("drawing-canvas");
-const context = canvas.getContext("2d");
-const colorPicker = document.getElementById("color-picker");
-const brushSizeInput = document.getElementById("brush-size");
-const brushSizeValue = document.getElementById("brush-size-value");
-const drawModeButton = document.getElementById("draw-mode");
-const eraseModeButton = document.getElementById("erase-mode");
-const clearCanvasButton = document.getElementById("clear-canvas");
-const saveImageButton = document.getElementById("save-image");
+const personUpload = document.getElementById("person-upload");
+const referenceUpload = document.getElementById("reference-upload");
+const personPreview = document.getElementById("person-preview");
+const referencePreview = document.getElementById("reference-preview");
+const resultPreview = document.getElementById("result-preview");
+const personPlaceholder = document.getElementById("person-placeholder");
+const referencePlaceholder = document.getElementById("reference-placeholder");
+const resultPlaceholder = document.getElementById("result-placeholder");
+const personFrame = personPreview.closest(".preview-frame");
+const referenceFrame = referencePreview.closest(".preview-frame");
+const resultFrame = resultPreview.closest(".preview-frame");
+const personCameraStart = document.getElementById("person-camera-start");
+const personCameraCapture = document.getElementById("person-camera-capture");
+const personCameraStop = document.getElementById("person-camera-stop");
+const referenceCameraStart = document.getElementById("reference-camera-start");
+const referenceCameraCapture = document.getElementById("reference-camera-capture");
+const referenceCameraStop = document.getElementById("reference-camera-stop");
+const personVideo = document.getElementById("person-video");
+const referenceVideo = document.getElementById("reference-video");
+const garmentType = document.getElementById("garment-type");
+const stylePrompt = document.getElementById("style-prompt");
+const generateButton = document.getElementById("generate-button");
+const generationStatus = document.getElementById("generation-status");
 const serverStatus = document.getElementById("server-status");
 
-const drawingState = {
-  active: false,
-  lastX: 0,
-  lastY: 0,
-  mode: "draw",
+const appState = {
+  personImageDataUrl: null,
+  referenceImageDataUrl: null,
+  resultImageDataUrl: null,
+  streams: {
+    person: null,
+    reference: null,
+  },
 };
 
-function setupCanvasResolution() {
-  let snapshot = null;
-  if (canvas.width > 0 && canvas.height > 0) {
-    snapshot = document.createElement("canvas");
-    snapshot.width = canvas.width;
-    snapshot.height = canvas.height;
-    const snapshotContext = snapshot.getContext("2d");
-    if (snapshotContext) {
-      snapshotContext.drawImage(canvas, 0, 0);
-    }
-  }
-
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-
-  canvas.width = Math.floor(rect.width * dpr);
-  canvas.height = Math.floor(rect.height * dpr);
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, rect.width, rect.height);
-
-  if (snapshot) {
-    context.drawImage(snapshot, 0, 0, snapshot.width, snapshot.height, 0, 0, rect.width, rect.height);
-  }
-}
-
-function updateBrushSizeLabel() {
-  brushSizeValue.textContent = `${brushSizeInput.value}px`;
-}
-
-function setMode(mode) {
-  drawingState.mode = mode;
-  const isDrawMode = mode === "draw";
-  drawModeButton.classList.toggle("active", isDrawMode);
-  eraseModeButton.classList.toggle("active", !isDrawMode);
-}
-
-function getCanvasCoordinates(event) {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
-  };
-}
-
-function drawLine(startX, startY, endX, endY) {
-  context.strokeStyle = drawingState.mode === "draw" ? colorPicker.value : "#ffffff";
-  context.lineWidth = Number(brushSizeInput.value);
-  context.beginPath();
-  context.moveTo(startX, startY);
-  context.lineTo(endX, endY);
-  context.stroke();
-}
-
-function startDrawing(event) {
-  event.preventDefault();
-  drawingState.active = true;
-  const { x, y } = getCanvasCoordinates(event);
-  drawingState.lastX = x;
-  drawingState.lastY = y;
-}
-
-function continueDrawing(event) {
-  if (!drawingState.active) {
+function setPreview({ frame, imageElement, placeholderElement }, dataUrl) {
+  if (!dataUrl) {
+    imageElement.removeAttribute("src");
+    frame.classList.remove("has-image");
+    placeholderElement.style.display = "block";
     return;
   }
 
-  event.preventDefault();
-  const { x, y } = getCanvasCoordinates(event);
-  drawLine(drawingState.lastX, drawingState.lastY, x, y);
-  drawingState.lastX = x;
-  drawingState.lastY = y;
+  imageElement.src = dataUrl;
+  frame.classList.add("has-image");
+  placeholderElement.style.display = "none";
 }
 
-function stopDrawing() {
-  drawingState.active = false;
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.readAsDataURL(file);
+  });
 }
 
-function clearCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  context.clearRect(0, 0, rect.width, rect.height);
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, rect.width, rect.height);
+async function handleFileUpload(fileInput, target) {
+  const selectedFile = fileInput.files?.[0];
+  if (!selectedFile) {
+    return;
+  }
+
+  try {
+    const dataUrl = await fileToDataUrl(selectedFile);
+    appState[target] = dataUrl;
+    updateInputsPreview();
+  } catch (error) {
+    generationStatus.textContent = `Upload failed: ${error.message}`;
+  }
 }
 
-function saveCanvasAsImage() {
-  const link = document.createElement("a");
-  link.href = canvas.toDataURL("image/png");
-  link.download = "drawing.png";
-  link.click();
+function getVideoElement(side) {
+  return side === "person" ? personVideo : referenceVideo;
 }
 
-canvas.addEventListener("pointerdown", startDrawing);
-canvas.addEventListener("pointermove", continueDrawing);
-canvas.addEventListener("pointerup", stopDrawing);
-canvas.addEventListener("pointerleave", stopDrawing);
-canvas.addEventListener("pointercancel", stopDrawing);
+function getCameraButtons(side) {
+  if (side === "person") {
+    return {
+      start: personCameraStart,
+      capture: personCameraCapture,
+      stop: personCameraStop,
+    };
+  }
 
-brushSizeInput.addEventListener("input", updateBrushSizeLabel);
-drawModeButton.addEventListener("click", () => setMode("draw"));
-eraseModeButton.addEventListener("click", () => setMode("erase"));
-clearCanvasButton.addEventListener("click", clearCanvas);
-saveImageButton.addEventListener("click", saveCanvasAsImage);
-window.addEventListener("resize", setupCanvasResolution);
+  return {
+    start: referenceCameraStart,
+    capture: referenceCameraCapture,
+    stop: referenceCameraStop,
+  };
+}
 
-function initializeDrawingApp() {
-  setupCanvasResolution();
-  updateBrushSizeLabel();
-  setMode("draw");
+async function startCamera(side) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    generationStatus.textContent = "Camera access is not supported in this browser.";
+    return;
+  }
+
+  const existingStream = appState.streams[side];
+  if (existingStream) {
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    appState.streams[side] = stream;
+
+    const video = getVideoElement(side);
+    const buttons = getCameraButtons(side);
+    video.srcObject = stream;
+    video.classList.add("active");
+    buttons.start.disabled = true;
+    buttons.capture.disabled = false;
+    buttons.stop.disabled = false;
+    generationStatus.textContent = `Camera ready for ${side === "person" ? "your photo" : "reference image"}.`;
+  } catch (error) {
+    generationStatus.textContent = `Could not start camera: ${error.message}`;
+  }
+}
+
+function stopCamera(side) {
+  const stream = appState.streams[side];
+  const video = getVideoElement(side);
+  const buttons = getCameraButtons(side);
+
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop());
+    appState.streams[side] = null;
+  }
+
+  video.srcObject = null;
+  video.classList.remove("active");
+  buttons.start.disabled = false;
+  buttons.capture.disabled = true;
+  buttons.stop.disabled = true;
+}
+
+function captureFromCamera(side) {
+  const video = getVideoElement(side);
+  if (!video.videoWidth || !video.videoHeight) {
+    generationStatus.textContent = "Camera is not ready to capture yet.";
+    return;
+  }
+
+  const captureCanvas = document.createElement("canvas");
+  captureCanvas.width = video.videoWidth;
+  captureCanvas.height = video.videoHeight;
+  const captureContext = captureCanvas.getContext("2d");
+  if (!captureContext) {
+    generationStatus.textContent = "Unable to capture image.";
+    return;
+  }
+
+  captureContext.drawImage(video, 0, 0);
+  const capturedDataUrl = captureCanvas.toDataURL("image/png");
+  if (side === "person") {
+    appState.personImageDataUrl = capturedDataUrl;
+  } else {
+    appState.referenceImageDataUrl = capturedDataUrl;
+  }
+
+  updateInputsPreview();
+  stopCamera(side);
+  generationStatus.textContent = `${side === "person" ? "Your photo" : "Reference image"} captured.`;
+}
+
+function updateInputsPreview() {
+  setPreview(
+    { frame: personFrame, imageElement: personPreview, placeholderElement: personPlaceholder },
+    appState.personImageDataUrl
+  );
+  setPreview(
+    { frame: referenceFrame, imageElement: referencePreview, placeholderElement: referencePlaceholder },
+    appState.referenceImageDataUrl
+  );
+}
+
+function updateResultPreview(dataUrl) {
+  appState.resultImageDataUrl = dataUrl;
+  setPreview(
+    { frame: resultFrame, imageElement: resultPreview, placeholderElement: resultPlaceholder },
+    appState.resultImageDataUrl
+  );
+}
+
+async function generateTryOn() {
+  if (!appState.personImageDataUrl || !appState.referenceImageDataUrl) {
+    generationStatus.textContent = "Please provide both your photo and a reference outfit image.";
+    return;
+  }
+
+  generateButton.disabled = true;
+  generationStatus.textContent = "Generating image with OpenAI... this can take up to a minute.";
+
+  try {
+    const response = await fetch("/api/virtual-try-on", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        personImageDataUrl: appState.personImageDataUrl,
+        referenceImageDataUrl: appState.referenceImageDataUrl,
+        garmentType: garmentType.value,
+        prompt: stylePrompt.value.trim(),
+      }),
+    });
+
+    const responseBody = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseBody.error || `Request failed with HTTP ${response.status}`);
+    }
+
+    if (!responseBody.resultImageDataUrl) {
+      throw new Error("No generated image was returned.");
+    }
+
+    updateResultPreview(responseBody.resultImageDataUrl);
+    generationStatus.textContent = "Done! Your try-on image is ready.";
+  } catch (error) {
+    generationStatus.textContent = `Generation failed: ${error.message}`;
+  } finally {
+    generateButton.disabled = false;
+  }
 }
 
 async function loadStatus() {
@@ -144,5 +240,19 @@ async function loadStatus() {
   }
 }
 
-initializeDrawingApp();
+personUpload.addEventListener("change", () => handleFileUpload(personUpload, "personImageDataUrl"));
+referenceUpload.addEventListener("change", () => handleFileUpload(referenceUpload, "referenceImageDataUrl"));
+personCameraStart.addEventListener("click", () => startCamera("person"));
+personCameraCapture.addEventListener("click", () => captureFromCamera("person"));
+personCameraStop.addEventListener("click", () => stopCamera("person"));
+referenceCameraStart.addEventListener("click", () => startCamera("reference"));
+referenceCameraCapture.addEventListener("click", () => captureFromCamera("reference"));
+referenceCameraStop.addEventListener("click", () => stopCamera("reference"));
+generateButton.addEventListener("click", generateTryOn);
+window.addEventListener("beforeunload", () => {
+  stopCamera("person");
+  stopCamera("reference");
+});
+
+updateInputsPreview();
 loadStatus();
