@@ -204,7 +204,6 @@ async function generateTryOnImage({
   formData.append("model", OPENAI_IMAGE_MODEL);
   formData.append("prompt", generationPrompt);
   formData.append("size", ASPECT_RATIO_SIZE_MAP[normalizedAspectRatio]);
-  formData.append("response_format", "b64_json");
   formData.append(
     "image[]",
     new Blob([personImage.buffer], { type: personImage.mimeType }),
@@ -230,12 +229,25 @@ async function generateTryOnImage({
     throw new Error(apiError);
   }
 
-  const base64Image = responseBody?.data?.[0]?.b64_json;
-  if (!base64Image) {
-    throw new Error("OpenAI did not return an image.");
+  const generatedImage = responseBody?.data?.[0];
+  const base64Image = generatedImage?.b64_json;
+  if (base64Image) {
+    return `data:image/png;base64,${base64Image}`;
   }
 
-  return `data:image/png;base64,${base64Image}`;
+  const imageUrl = generatedImage?.url;
+  if (imageUrl) {
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`OpenAI returned an image URL but it could not be downloaded (HTTP ${imageResponse.status}).`);
+    }
+
+    const contentType = imageResponse.headers.get("content-type") || "image/png";
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    return `data:${contentType};base64,${imageBuffer.toString("base64")}`;
+  }
+
+  throw new Error("OpenAI did not return an image.");
 }
 
 async function handleTryOnRequest(request, response) {
