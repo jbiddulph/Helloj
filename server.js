@@ -4,7 +4,7 @@ const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
 const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1.5";
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL;
 const ASPECT_RATIO_SIZE_MAP = {
@@ -257,6 +257,18 @@ function getOpenAiErrorMessage(responseBody, statusCode) {
   return apiMessage || `OpenAI request failed with HTTP ${statusCode}`;
 }
 
+function buildUserFriendlyErrorMessage(rawMessage) {
+  if (typeof rawMessage !== "string") {
+    return "Unexpected server error while generating image.";
+  }
+
+  if (rawMessage.includes("The string did not match the expected pattern")) {
+    return "Generation failed due to invalid server request formatting. Check OPENAI_API_KEY for extra spaces/newlines and ensure it is a valid key.";
+  }
+
+  return rawMessage;
+}
+
 async function runImageEditAttempt(label, makeRequest) {
   try {
     const requestResult = await makeRequest();
@@ -282,6 +294,9 @@ async function generateTryOnImage({
 }) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured on the server.");
+  }
+  if (/\s/.test(OPENAI_API_KEY)) {
+    throw new Error("OPENAI_API_KEY contains whitespace. Please reconfigure the key without spaces or newlines.");
   }
 
   const personImage = parseImageDataUrl(personImageDataUrl);
@@ -402,7 +417,8 @@ async function handleTryOnRequest(request, response) {
     const resultImageDataUrl = await generateTryOnImage(payload);
     sendJson(response, 200, { resultImageDataUrl });
   } catch (error) {
-    sendJson(response, 500, { error: error.message });
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    sendJson(response, 500, { error: buildUserFriendlyErrorMessage(message) });
   }
 }
 
