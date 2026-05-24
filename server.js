@@ -4,8 +4,9 @@ const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
+const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1.5";
+const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL;
 const ASPECT_RATIO_SIZE_MAP = {
   square: "1024x1024",
   portrait: "1024x1536",
@@ -139,6 +140,24 @@ function normalizeChangeStrength(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function normalizeImageModel(value) {
+  if (typeof value !== "string") {
+    return DEFAULT_OPENAI_IMAGE_MODEL;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return DEFAULT_OPENAI_IMAGE_MODEL;
+  }
+
+  const modelPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
+  if (!modelPattern.test(trimmedValue)) {
+    return DEFAULT_OPENAI_IMAGE_MODEL;
+  }
+
+  return trimmedValue;
+}
+
 function buildNormalizedImageDataUrl(image) {
   return `data:${image.mimeType};base64,${image.buffer.toString("base64")}`;
 }
@@ -180,7 +199,7 @@ function buildTryOnPrompt({ garmentType, prompt, backgroundPreservation, changeS
   return basePrompt.join(" ");
 }
 
-async function callOpenAiImageEditsJson({ model, prompt, size, personDataUrl, referenceDataUrl }) {
+async function callOpenAiImageEditsJson({ model, prompt, size, images }) {
   const openAiResponse = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
     headers: {
@@ -192,7 +211,7 @@ async function callOpenAiImageEditsJson({ model, prompt, size, personDataUrl, re
       prompt,
       size,
       output_format: "png",
-      images: [{ image_url: personDataUrl }, { image_url: referenceDataUrl }],
+      images,
     }),
   });
 
@@ -200,19 +219,19 @@ async function callOpenAiImageEditsJson({ model, prompt, size, personDataUrl, re
   return { ok: openAiResponse.ok, status: openAiResponse.status, responseBody };
 }
 
-async function callOpenAiImageEditsMultipart({ model, prompt, size, personImage, referenceImage }) {
+async function callOpenAiImageEditsMultipart({ model, prompt, size, personImage, referenceImage, imageFieldName }) {
   const formData = new FormData();
   formData.append("model", model);
   formData.append("prompt", prompt);
   formData.append("size", size);
   formData.append("output_format", "png");
   formData.append(
-    "image[]",
+    imageFieldName,
     new Blob([personImage.buffer], { type: personImage.mimeType }),
     `person.${personImage.extension}`
   );
   formData.append(
-    "image[]",
+    imageFieldName,
     new Blob([referenceImage.buffer], { type: referenceImage.mimeType }),
     `reference.${referenceImage.extension}`
   );
@@ -238,6 +257,32 @@ function getOpenAiErrorMessage(responseBody, statusCode) {
   return apiMessage || `OpenAI request failed with HTTP ${statusCode}`;
 }
 
+function buildUserFriendlyErrorMessage(rawMessage) {
+  if (typeof rawMessage !== "string") {
+    return "Unexpected server error while generating image.";
+  }
+
+  if (rawMessage.includes("The string did not match the expected pattern")) {
+    return "Generation failed due to invalid server request formatting. Check OPENAI_API_KEY for extra spaces/newlines and ensure it is a valid key.";
+  }
+
+  return rawMessage;
+}
+
+async function runImageEditAttempt(label, makeRequest) {
+  try {
+    const requestResult = await makeRequest();
+    return { label, ...requestResult };
+  } catch (error) {
+    return {
+      label,
+      ok: false,
+      status: 0,
+      responseBody: { error: { message: error?.message || "Image edit request failed before reaching OpenAI." } },
+    };
+  }
+}
+
 async function generateTryOnImage({
   personImageDataUrl,
   referenceImageDataUrl,
@@ -249,6 +294,9 @@ async function generateTryOnImage({
 }) {
   if (!OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured on the server.");
+  }
+  if (/\s/.test(OPENAI_API_KEY)) {
+    throw new Error("OPENAI_API_KEY contains whitespace. Please reconfigure the key without spaces or newlines.");
   }
 
   const personImage = parseImageDataUrl(personImageDataUrl);
@@ -263,36 +311,68 @@ async function generateTryOnImage({
     changeStrength: normalizedChangeStrength,
   });
   const size = ASPECT_RATIO_SIZE_MAP[normalizedAspectRatio];
+  const model = normalizeImageModel(OPENAI_IMAGE_MODEL);
   const personDataUrl = buildNormalizedImageDataUrl(personImage);
   const referenceDataUrl = buildNormalizedImageDataUrl(referenceImage);
 
+  const attempts = [
+    () =>
+      runImageEditAttempt("JSON images[].image_url", () =>
+        callOpenAiImageEditsJson({
+          model,
+          prompt: generationPrompt,
+          size,
+          images: [{ image_url: personDataUrl }, { image_url: referenceDataUrl }],
+        })
+      ),
+    () =>
+      runImageEditAttempt("JSON images[] data URLs", () =>
+        callOpenAiImageEditsJson({
+          model,
+          prompt: generationPrompt,
+          size,
+          images: [personDataUrl, referenceDataUrl],
+        })
+      ),
+    () =>
+      runImageEditAttempt("Multipart image[]", () =>
+        callOpenAiImageEditsMultipart({
+          model,
+          prompt: generationPrompt,
+          size,
+          personImage,
+          referenceImage,
+          imageFieldName: "image[]",
+        })
+      ),
+    () =>
+      runImageEditAttempt("Multipart image", () =>
+        callOpenAiImageEditsMultipart({
+          model,
+          prompt: generationPrompt,
+          size,
+          personImage,
+          referenceImage,
+          imageFieldName: "image",
+        })
+      ),
+  ];
+
   let responseBody;
-  const jsonResult = await callOpenAiImageEditsJson({
-    model: OPENAI_IMAGE_MODEL,
-    prompt: generationPrompt,
-    size,
-    personDataUrl,
-    referenceDataUrl,
-  });
-
-  if (jsonResult.ok) {
-    responseBody = jsonResult.responseBody;
-  } else {
-    const multipartResult = await callOpenAiImageEditsMultipart({
-      model: OPENAI_IMAGE_MODEL,
-      prompt: generationPrompt,
-      size,
-      personImage,
-      referenceImage,
-    });
-
-    if (!multipartResult.ok) {
-      const jsonError = getOpenAiErrorMessage(jsonResult.responseBody, jsonResult.status);
-      const multipartError = getOpenAiErrorMessage(multipartResult.responseBody, multipartResult.status);
-      throw new Error(`OpenAI image edit failed. JSON mode: ${jsonError}. Multipart mode: ${multipartError}.`);
+  const attemptErrors = [];
+  for (const attempt of attempts) {
+    const attemptResult = await attempt();
+    if (attemptResult.ok) {
+      responseBody = attemptResult.responseBody;
+      break;
     }
 
-    responseBody = multipartResult.responseBody;
+    const errorMessage = getOpenAiErrorMessage(attemptResult.responseBody, attemptResult.status);
+    attemptErrors.push(`${attemptResult.label}: ${errorMessage}`);
+  }
+
+  if (!responseBody) {
+    throw new Error(`OpenAI image edit failed. ${attemptErrors.join(" | ")}`);
   }
 
   const generatedImage = responseBody?.data?.[0];
@@ -337,7 +417,8 @@ async function handleTryOnRequest(request, response) {
     const resultImageDataUrl = await generateTryOnImage(payload);
     sendJson(response, 200, { resultImageDataUrl });
   } catch (error) {
-    sendJson(response, 500, { error: error.message });
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    sendJson(response, 500, { error: buildUserFriendlyErrorMessage(message) });
   }
 }
 
