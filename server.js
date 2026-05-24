@@ -97,9 +97,10 @@ function parseImageDataUrl(dataUrl) {
     throw new Error("Image data URL format is invalid.");
   }
 
-  const mimeType = matches[1].toLowerCase();
+  const parsedMimeType = matches[1].toLowerCase();
+  const mimeType = parsedMimeType === "image/jpg" ? "image/jpeg" : parsedMimeType;
   const base64Payload = matches[2].replace(/\s/g, "");
-  const supportedMimeTypes = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+  const supportedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
   if (!supportedMimeTypes.has(mimeType)) {
     throw new Error("Only PNG, JPG, JPEG, and WEBP images are supported.");
   }
@@ -136,6 +137,10 @@ function normalizeChangeStrength(value) {
     return 78;
   }
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function buildNormalizedImageDataUrl(image) {
+  return `data:${image.mimeType};base64,${image.buffer.toString("base64")}`;
 }
 
 function buildTryOnPrompt({ garmentType, prompt, backgroundPreservation, changeStrength }) {
@@ -175,6 +180,64 @@ function buildTryOnPrompt({ garmentType, prompt, backgroundPreservation, changeS
   return basePrompt.join(" ");
 }
 
+async function callOpenAiImageEditsJson({ model, prompt, size, personDataUrl, referenceDataUrl }) {
+  const openAiResponse = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      size,
+      output_format: "png",
+      images: [{ image_url: personDataUrl }, { image_url: referenceDataUrl }],
+    }),
+  });
+
+  const responseBody = await openAiResponse.json().catch(() => ({}));
+  return { ok: openAiResponse.ok, status: openAiResponse.status, responseBody };
+}
+
+async function callOpenAiImageEditsMultipart({ model, prompt, size, personImage, referenceImage }) {
+  const formData = new FormData();
+  formData.append("model", model);
+  formData.append("prompt", prompt);
+  formData.append("size", size);
+  formData.append("output_format", "png");
+  formData.append(
+    "image[]",
+    new Blob([personImage.buffer], { type: personImage.mimeType }),
+    `person.${personImage.extension}`
+  );
+  formData.append(
+    "image[]",
+    new Blob([referenceImage.buffer], { type: referenceImage.mimeType }),
+    `reference.${referenceImage.extension}`
+  );
+
+  const openAiResponse = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: formData,
+  });
+
+  const responseBody = await openAiResponse.json().catch(() => ({}));
+  return { ok: openAiResponse.ok, status: openAiResponse.status, responseBody };
+}
+
+function getOpenAiErrorMessage(responseBody, statusCode) {
+  const apiMessage = responseBody?.error?.message;
+  const apiParam = responseBody?.error?.param;
+  if (apiMessage && apiParam) {
+    return `${apiMessage} (param: ${apiParam})`;
+  }
+  return apiMessage || `OpenAI request failed with HTTP ${statusCode}`;
+}
+
 async function generateTryOnImage({
   personImageDataUrl,
   referenceImageDataUrl,
@@ -199,34 +262,37 @@ async function generateTryOnImage({
     backgroundPreservation: normalizedBackgroundPreservation,
     changeStrength: normalizedChangeStrength,
   });
+  const size = ASPECT_RATIO_SIZE_MAP[normalizedAspectRatio];
+  const personDataUrl = buildNormalizedImageDataUrl(personImage);
+  const referenceDataUrl = buildNormalizedImageDataUrl(referenceImage);
 
-  const formData = new FormData();
-  formData.append("model", OPENAI_IMAGE_MODEL);
-  formData.append("prompt", generationPrompt);
-  formData.append("size", ASPECT_RATIO_SIZE_MAP[normalizedAspectRatio]);
-  formData.append(
-    "image[]",
-    new Blob([personImage.buffer], { type: personImage.mimeType }),
-    `person.${personImage.extension}`
-  );
-  formData.append(
-    "image[]",
-    new Blob([referenceImage.buffer], { type: referenceImage.mimeType }),
-    `reference.${referenceImage.extension}`
-  );
-
-  const openAiResponse = await fetch("https://api.openai.com/v1/images/edits", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: formData,
+  let responseBody;
+  const jsonResult = await callOpenAiImageEditsJson({
+    model: OPENAI_IMAGE_MODEL,
+    prompt: generationPrompt,
+    size,
+    personDataUrl,
+    referenceDataUrl,
   });
 
-  const responseBody = await openAiResponse.json().catch(() => ({}));
-  if (!openAiResponse.ok) {
-    const apiError = responseBody?.error?.message || `OpenAI request failed with HTTP ${openAiResponse.status}`;
-    throw new Error(apiError);
+  if (jsonResult.ok) {
+    responseBody = jsonResult.responseBody;
+  } else {
+    const multipartResult = await callOpenAiImageEditsMultipart({
+      model: OPENAI_IMAGE_MODEL,
+      prompt: generationPrompt,
+      size,
+      personImage,
+      referenceImage,
+    });
+
+    if (!multipartResult.ok) {
+      const jsonError = getOpenAiErrorMessage(jsonResult.responseBody, jsonResult.status);
+      const multipartError = getOpenAiErrorMessage(multipartResult.responseBody, multipartResult.status);
+      throw new Error(`OpenAI image edit failed. JSON mode: ${jsonError}. Multipart mode: ${multipartError}.`);
+    }
+
+    responseBody = multipartResult.responseBody;
   }
 
   const generatedImage = responseBody?.data?.[0];
