@@ -4,8 +4,8 @@ const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
-const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
-const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1.5";
+const OPENAI_API_KEY = normalizeOpenAiApiKey(process.env.OPENAI_API_KEY || "");
+const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1";
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL;
 const ASPECT_RATIO_SIZE_MAP = {
   square: "1024x1024",
@@ -140,6 +140,42 @@ function normalizeChangeStrength(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function normalizeOpenAiApiKey(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  let normalizedValue = value.trim();
+  if (
+    (normalizedValue.startsWith("\"") && normalizedValue.endsWith("\"")) ||
+    (normalizedValue.startsWith("'") && normalizedValue.endsWith("'"))
+  ) {
+    normalizedValue = normalizedValue.slice(1, -1).trim();
+  }
+
+  if (normalizedValue.toLowerCase().startsWith("bearer ")) {
+    normalizedValue = normalizedValue.slice(7).trim();
+  }
+
+  return normalizedValue;
+}
+
+function getOpenAiApiKeyValidationError(apiKey) {
+  if (!apiKey) {
+    return "OPENAI_API_KEY is not configured on the server.";
+  }
+
+  if (/\s/.test(apiKey)) {
+    return "OPENAI_API_KEY contains whitespace. Please reconfigure the key without spaces or newlines.";
+  }
+
+  if (!apiKey.startsWith("sk-")) {
+    return "OPENAI_API_KEY format looks invalid. Set the raw API key value (starting with sk-) without quotes or a Bearer prefix.";
+  }
+
+  return "";
+}
+
 function normalizeImageModel(value) {
   if (typeof value !== "string") {
     return DEFAULT_OPENAI_IMAGE_MODEL;
@@ -262,8 +298,15 @@ function buildUserFriendlyErrorMessage(rawMessage) {
     return "Unexpected server error while generating image.";
   }
 
-  if (rawMessage.includes("The string did not match the expected pattern")) {
-    return "Generation failed due to invalid server request formatting. Check OPENAI_API_KEY for extra spaces/newlines and ensure it is a valid key.";
+  if (/param:\s*model/i.test(rawMessage) || /invalid.*model/i.test(rawMessage)) {
+    return "Generation failed due to an invalid OPENAI_IMAGE_MODEL value. Use gpt-image-1 or unset OPENAI_IMAGE_MODEL to use the default.";
+  }
+
+  if (
+    /did not match (the )?expected pattern/i.test(rawMessage) ||
+    /invalid header value/i.test(rawMessage)
+  ) {
+    return "Generation failed due to invalid request formatting. Verify OPENAI_API_KEY contains only the raw key value (no quotes, no Bearer prefix, no whitespace).";
   }
 
   return rawMessage;
@@ -292,11 +335,9 @@ async function generateTryOnImage({
   changeStrength,
   prompt,
 }) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured on the server.");
-  }
-  if (/\s/.test(OPENAI_API_KEY)) {
-    throw new Error("OPENAI_API_KEY contains whitespace. Please reconfigure the key without spaces or newlines.");
+  const apiKeyValidationError = getOpenAiApiKeyValidationError(OPENAI_API_KEY);
+  if (apiKeyValidationError) {
+    throw new Error(apiKeyValidationError);
   }
 
   const personImage = parseImageDataUrl(personImageDataUrl);
