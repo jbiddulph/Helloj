@@ -28,6 +28,7 @@ const downloadResultButton = document.getElementById("download-result");
 const historyGallery = document.getElementById("history-gallery");
 const historyPlaceholder = document.getElementById("history-placeholder");
 const generationStatus = document.getElementById("generation-status");
+const generationOverlay = document.getElementById("generation-overlay");
 const serverStatus = document.getElementById("server-status");
 const vintedCategory = document.getElementById("vinted-category");
 const loadVintedItemsButton = document.getElementById("load-vinted-items");
@@ -232,6 +233,15 @@ function updateChangeStrengthLabel() {
   changeStrengthValue.textContent = `${changeStrength.value}%`;
 }
 
+function setGenerationLoadingState(isLoading) {
+  generateButton.disabled = isLoading;
+  if (!generationOverlay) {
+    return;
+  }
+  generationOverlay.classList.toggle("active", isLoading);
+  generationOverlay.setAttribute("aria-hidden", String(!isLoading));
+}
+
 function mapCategoryToGarmentType(category) {
   if (category === "hat") {
     return "hat";
@@ -408,7 +418,7 @@ async function generateTryOn() {
     return;
   }
 
-  generateButton.disabled = true;
+  setGenerationLoadingState(true);
   generationStatus.textContent = "Generating image with OpenAI... this can take up to a minute.";
 
   try {
@@ -447,7 +457,7 @@ async function generateTryOn() {
   } catch (error) {
     generationStatus.textContent = `Generation failed: ${error.message}`;
   } finally {
-    generateButton.disabled = false;
+    setGenerationLoadingState(false);
   }
 }
 
