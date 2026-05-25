@@ -29,6 +29,10 @@ const historyGallery = document.getElementById("history-gallery");
 const historyPlaceholder = document.getElementById("history-placeholder");
 const generationStatus = document.getElementById("generation-status");
 const serverStatus = document.getElementById("server-status");
+const vintedCategory = document.getElementById("vinted-category");
+const loadVintedItemsButton = document.getElementById("load-vinted-items");
+const vintedGallery = document.getElementById("vinted-gallery");
+const vintedStatus = document.getElementById("vinted-status");
 
 const MAX_HISTORY_ITEMS = 12;
 
@@ -40,6 +44,11 @@ const appState = {
   streams: {
     person: null,
     reference: null,
+  },
+  vinted: {
+    items: [],
+    selectedItemId: null,
+    loadingSelection: false,
   },
 };
 
@@ -91,6 +100,11 @@ async function handleFileUpload(fileInput, target) {
   try {
     const dataUrl = await fileToDataUrl(selectedFile);
     appState[target] = dataUrl;
+    if (target === "referenceImageDataUrl") {
+      appState.vinted.selectedItemId = null;
+      renderVintedGallery();
+      vintedStatus.textContent = "Using your uploaded outfit image as reference.";
+    }
     updateInputsPreview();
   } catch (error) {
     generationStatus.textContent = `Upload failed: ${error.message}`;
@@ -184,6 +198,9 @@ function captureFromCamera(side) {
     appState.personImageDataUrl = capturedDataUrl;
   } else {
     appState.referenceImageDataUrl = capturedDataUrl;
+    appState.vinted.selectedItemId = null;
+    renderVintedGallery();
+    vintedStatus.textContent = "Using your camera capture as reference.";
   }
 
   updateInputsPreview();
@@ -213,6 +230,132 @@ function updateResultPreview(dataUrl) {
 
 function updateChangeStrengthLabel() {
   changeStrengthValue.textContent = `${changeStrength.value}%`;
+}
+
+function mapCategoryToGarmentType(category) {
+  if (category === "hat") {
+    return "hat";
+  }
+  if (category === "trousers") {
+    return "trousers";
+  }
+  if (category === "dresses") {
+    return "dress";
+  }
+  return "shirt";
+}
+
+function renderVintedGallery() {
+  vintedGallery.innerHTML = "";
+
+  if (!appState.vinted.items.length) {
+    const emptyState = document.createElement("p");
+    emptyState.className = "vinted-empty";
+    emptyState.textContent = "No Vinted thumbnails loaded yet.";
+    vintedGallery.appendChild(emptyState);
+    return;
+  }
+
+  appState.vinted.items.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "vinted-item";
+
+    const image = document.createElement("img");
+    image.src = item.thumbnailUrl;
+    image.alt = item.alt || `${item.title} on Vinted`;
+    card.appendChild(image);
+
+    const title = document.createElement("p");
+    title.className = "vinted-item-title";
+    title.textContent = item.title || "Vinted garment";
+    card.appendChild(title);
+
+    if (item.price || item.subtitle) {
+      const meta = document.createElement("p");
+      meta.className = "vinted-item-meta";
+      meta.textContent = [item.price, item.subtitle].filter(Boolean).join(" • ");
+      card.appendChild(meta);
+    }
+
+    const selectButton = document.createElement("button");
+    selectButton.type = "button";
+    selectButton.textContent = appState.vinted.selectedItemId === item.id ? "Selected" : "Use as Reference";
+    selectButton.classList.toggle("active", appState.vinted.selectedItemId === item.id);
+    selectButton.disabled = appState.vinted.loadingSelection;
+    selectButton.addEventListener("click", () => {
+      useVintedItemAsReference(item.id);
+    });
+    card.appendChild(selectButton);
+
+    vintedGallery.appendChild(card);
+  });
+}
+
+async function loadVintedItems() {
+  loadVintedItemsButton.disabled = true;
+  vintedStatus.textContent = "Loading Vinted thumbnails...";
+
+  try {
+    const selectedCategory = vintedCategory.value || "shirts-tops";
+    garmentType.value = mapCategoryToGarmentType(selectedCategory);
+
+    const response = await fetch(
+      `/api/vinted-garments?category=${encodeURIComponent(selectedCategory)}&limit=${MAX_HISTORY_ITEMS}`
+    );
+    const responseBody = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseBody.error || `HTTP ${response.status}`);
+    }
+
+    appState.vinted.items = Array.isArray(responseBody.items) ? responseBody.items : [];
+    appState.vinted.selectedItemId = null;
+    renderVintedGallery();
+    vintedStatus.textContent = appState.vinted.items.length
+      ? `Loaded ${appState.vinted.items.length} ${responseBody.categoryLabel || "items"} thumbnails.`
+      : "No thumbnails were found for this category.";
+  } catch (error) {
+    appState.vinted.items = [];
+    appState.vinted.selectedItemId = null;
+    renderVintedGallery();
+    vintedStatus.textContent = `Could not load Vinted items: ${error.message}`;
+  } finally {
+    loadVintedItemsButton.disabled = false;
+  }
+}
+
+async function useVintedItemAsReference(itemId) {
+  const selectedItem = appState.vinted.items.find((item) => item.id === itemId);
+  if (!selectedItem) {
+    vintedStatus.textContent = "That Vinted item is no longer available.";
+    return;
+  }
+
+  appState.vinted.loadingSelection = true;
+  renderVintedGallery();
+  vintedStatus.textContent = "Downloading selected Vinted item...";
+
+  try {
+    const response = await fetch(`/api/vinted-image-data-url?url=${encodeURIComponent(selectedItem.thumbnailUrl)}`);
+    const responseBody = await response.json();
+    if (!response.ok) {
+      throw new Error(responseBody.error || `HTTP ${response.status}`);
+    }
+    if (!responseBody.dataUrl) {
+      throw new Error("No image data was returned.");
+    }
+
+    appState.referenceImageDataUrl = responseBody.dataUrl;
+    appState.vinted.selectedItemId = selectedItem.id;
+    updateInputsPreview();
+    generationStatus.textContent = `Reference image set from Vinted: ${selectedItem.title}.`;
+    vintedStatus.textContent = "Vinted item selected and ready for try-on.";
+  } catch (error) {
+    vintedStatus.textContent = `Could not use selected Vinted item: ${error.message}`;
+  } finally {
+    appState.vinted.loadingSelection = false;
+    renderVintedGallery();
+  }
 }
 
 function addHistoryEntry(dataUrl, metadata) {
@@ -333,6 +476,10 @@ referenceCameraCapture.addEventListener("click", () => captureFromCamera("refere
 referenceCameraStop.addEventListener("click", () => stopCamera("reference"));
 changeStrength.addEventListener("input", updateChangeStrengthLabel);
 generateButton.addEventListener("click", generateTryOn);
+loadVintedItemsButton.addEventListener("click", loadVintedItems);
+vintedCategory.addEventListener("change", () => {
+  garmentType.value = mapCategoryToGarmentType(vintedCategory.value);
+});
 downloadResultButton.addEventListener("click", () => {
   if (!appState.resultImageDataUrl) {
     return;
@@ -348,4 +495,6 @@ updateInputsPreview();
 updateResultPreview(null);
 updateChangeStrengthLabel();
 renderHistoryGallery();
+renderVintedGallery();
 loadStatus();
+loadVintedItems();

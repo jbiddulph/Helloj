@@ -55,6 +55,21 @@
             <button id="reference-camera-stop" type="button" disabled>Stop Camera</button>
           </div>
           <video id="reference-video" class="camera-feed" autoplay playsinline muted></video>
+          <div class="vinted-picker">
+            <h3>Or pick from Vinted</h3>
+            <div class="vinted-controls">
+              <label for="vinted-category">Category</label>
+              <select id="vinted-category">
+                <option value="shirts-tops">Shirts / Tops</option>
+                <option value="hat">Hat</option>
+                <option value="trousers">Trousers</option>
+                <option value="dresses">Dresses</option>
+              </select>
+              <button id="load-vinted-items" type="button">Load Vinted Items</button>
+            </div>
+            <p id="vinted-status" aria-live="polite">Choose a category and load thumbnails.</p>
+            <div id="vinted-gallery" class="vinted-gallery"></div>
+          </div>
         </article>
       </section>
 
@@ -64,6 +79,7 @@
           <option value="shirt">Shirt / Top</option>
           <option value="trousers">Trousers / Pants</option>
           <option value="hat">Hat</option>
+          <option value="dress">Dress</option>
           <option value="shoes">Shoes</option>
           <option value="jacket">Jacket</option>
           <option value="other">Other</option>
