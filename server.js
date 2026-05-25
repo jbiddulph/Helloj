@@ -7,6 +7,26 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const OPENAI_API_KEY = normalizeOpenAiApiKey(process.env.OPENAI_API_KEY || "");
 const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1";
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL;
+const DEFAULT_VINTED_LIMIT = 12;
+const MAX_VINTED_LIMIT = 24;
+const VINTED_CATEGORY_CONFIG = {
+  "shirts-tops": {
+    label: "Shirts / Tops",
+    searchText: "shirt top",
+  },
+  hat: {
+    label: "Hat",
+    searchText: "hat",
+  },
+  trousers: {
+    label: "Trousers",
+    searchText: "trousers pants",
+  },
+  dresses: {
+    label: "Dresses",
+    searchText: "dress",
+  },
+};
 const ASPECT_RATIO_SIZE_MAP = {
   square: "1024x1024",
   portrait: "1024x1536",
@@ -196,6 +216,206 @@ function normalizeImageModel(value) {
 
 function buildNormalizedImageDataUrl(image) {
   return `data:${image.mimeType};base64,${image.buffer.toString("base64")}`;
+}
+
+function decodeHtmlEntities(value) {
+  if (typeof value !== "string" || !value.includes("&")) {
+    return typeof value === "string" ? value : "";
+  }
+
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hexCodePoint) => String.fromCodePoint(Number.parseInt(hexCodePoint, 16)))
+    .replace(/&#([0-9]+);/g, (_, decimalCodePoint) => String.fromCodePoint(Number.parseInt(decimalCodePoint, 10)));
+}
+
+function stripHtmlTags(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return decodeHtmlEntities(value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function extractHtmlAttribute(tag, attributeName) {
+  if (typeof tag !== "string" || !tag) {
+    return "";
+  }
+  const attributePattern = new RegExp(`${attributeName}="([^"]*)"`, "i");
+  const matches = tag.match(attributePattern);
+  return decodeHtmlEntities(matches?.[1] || "");
+}
+
+function normalizeVintedCategory(value) {
+  if (typeof value === "string" && Object.prototype.hasOwnProperty.call(VINTED_CATEGORY_CONFIG, value)) {
+    return value;
+  }
+  return "shirts-tops";
+}
+
+function normalizeVintedLimit(value) {
+  const parsedValue = Number.parseInt(value, 10);
+  if (Number.isNaN(parsedValue)) {
+    return DEFAULT_VINTED_LIMIT;
+  }
+  return Math.max(1, Math.min(MAX_VINTED_LIMIT, parsedValue));
+}
+
+function extractVintedItemsFromHtml(html, limit) {
+  if (typeof html !== "string" || !html) {
+    return [];
+  }
+
+  const ids = [];
+  const seenIds = new Set();
+  const idPattern = /data-testid="product-item-id-(\d+)--overlay-link"/g;
+  let idMatch;
+  while ((idMatch = idPattern.exec(html)) && ids.length < limit * 3) {
+    const itemId = idMatch[1];
+    if (!seenIds.has(itemId)) {
+      seenIds.add(itemId);
+      ids.push(itemId);
+    }
+  }
+
+  const items = [];
+  for (const itemId of ids) {
+    const imageTagPattern = new RegExp(`<img[^>]*data-testid="product-item-id-${itemId}--image--img"[^>]*>`, "i");
+    const overlayTagPattern = new RegExp(`<a[^>]*data-testid="product-item-id-${itemId}--overlay-link"[^>]*>`, "i");
+    const titlePattern = new RegExp(
+      `<p[^>]*data-testid="product-item-id-${itemId}--description-title"[^>]*>([\\s\\S]*?)<\\/p>`,
+      "i"
+    );
+    const subtitlePattern = new RegExp(
+      `<p[^>]*data-testid="product-item-id-${itemId}--description-subtitle"[^>]*>([\\s\\S]*?)<\\/p>`,
+      "i"
+    );
+    const pricePattern = new RegExp(`<p[^>]*data-testid="product-item-id-${itemId}--price-text"[^>]*>([\\s\\S]*?)<\\/p>`, "i");
+
+    const imageTag = html.match(imageTagPattern)?.[0] || "";
+    const overlayTag = html.match(overlayTagPattern)?.[0] || "";
+    if (!imageTag || !overlayTag) {
+      continue;
+    }
+
+    const thumbnailUrl = extractHtmlAttribute(imageTag, "src");
+    const itemUrl = extractHtmlAttribute(overlayTag, "href");
+    if (!thumbnailUrl || !itemUrl) {
+      continue;
+    }
+
+    const overlayTitle = extractHtmlAttribute(overlayTag, "title");
+    const brandTitle = stripHtmlTags(html.match(titlePattern)?.[1] || "");
+    const subtitle = stripHtmlTags(html.match(subtitlePattern)?.[1] || "");
+    const price = stripHtmlTags(html.match(pricePattern)?.[1] || "");
+    const fallbackTitle = overlayTitle.split(",")[0].trim();
+
+    let normalizedItemUrl = itemUrl;
+    try {
+      normalizedItemUrl = new URL(itemUrl, "https://www.vinted.com").toString();
+    } catch (error) {
+      normalizedItemUrl = itemUrl;
+    }
+
+    items.push({
+      id: itemId,
+      title: brandTitle || fallbackTitle || "Vinted garment",
+      subtitle,
+      price,
+      itemUrl: normalizedItemUrl,
+      thumbnailUrl,
+      alt: overlayTitle || "Vinted garment",
+    });
+
+    if (items.length >= limit) {
+      break;
+    }
+  }
+
+  return items;
+}
+
+async function fetchVintedGarments(category, limit) {
+  const categoryConfig = VINTED_CATEGORY_CONFIG[category];
+  if (!categoryConfig) {
+    throw new Error("Unsupported Vinted category.");
+  }
+
+  const catalogUrl = new URL("https://www.vinted.com/catalog");
+  catalogUrl.searchParams.set("search_text", categoryConfig.searchText);
+
+  const response = await fetch(catalogUrl, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      "User-Agent":
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Vinted catalog request failed with HTTP ${response.status}.`);
+  }
+
+  const html = await response.text();
+  const items = extractVintedItemsFromHtml(html, limit);
+  return {
+    category,
+    categoryLabel: categoryConfig.label,
+    items,
+  };
+}
+
+function isAllowedVintedImageUrl(imageUrl) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(imageUrl);
+  } catch (error) {
+    return false;
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    return false;
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  return hostname === "images1.vinted.net" || hostname === "images2.vinted.net" || hostname.endsWith(".vinted.net");
+}
+
+async function fetchImageDataUrlFromRemote(imageUrl, maxBytes = 8 * 1024 * 1024) {
+  if (!isAllowedVintedImageUrl(imageUrl)) {
+    throw new Error("Only HTTPS images hosted on vinted.net are allowed.");
+  }
+
+  const response = await fetch(imageUrl, {
+    headers: {
+      Accept: "image/*",
+      "User-Agent":
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Image download failed with HTTP ${response.status}.`);
+  }
+
+  const contentTypeHeader = response.headers.get("content-type") || "";
+  const contentType = contentTypeHeader.split(";")[0].trim().toLowerCase();
+  if (!contentType.startsWith("image/")) {
+    throw new Error("Selected URL did not return an image.");
+  }
+
+  const imageBuffer = Buffer.from(await response.arrayBuffer());
+  if (!imageBuffer.length) {
+    throw new Error("Selected image is empty.");
+  }
+  if (imageBuffer.length > maxBytes) {
+    throw new Error("Selected image is larger than 8MB.");
+  }
+
+  return `data:${contentType};base64,${imageBuffer.toString("base64")}`;
 }
 
 function buildTryOnPrompt({ garmentType, prompt, backgroundPreservation, changeStrength }) {
@@ -476,6 +696,37 @@ async function handleRequest(request, response) {
       status: "ok",
       uptimeSeconds: Math.floor(process.uptime())
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/vinted-garments") {
+    const category = normalizeVintedCategory(url.searchParams.get("category"));
+    const limit = normalizeVintedLimit(url.searchParams.get("limit"));
+
+    try {
+      const result = await fetchVintedGarments(category, limit);
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, 502, { error: error?.message || "Failed to load garments from Vinted." });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/vinted-image-data-url") {
+    const imageUrl = url.searchParams.get("url");
+    if (!imageUrl) {
+      sendJson(response, 400, { error: "Missing required query parameter: url" });
+      return;
+    }
+
+    try {
+      const dataUrl = await fetchImageDataUrlFromRemote(imageUrl);
+      sendJson(response, 200, { dataUrl });
+    } catch (error) {
+      const message = error?.message || "Failed to load selected Vinted image.";
+      const statusCode = /allowed|missing|required/i.test(message) ? 400 : 502;
+      sendJson(response, statusCode, { error: message });
+    }
     return;
   }
 
